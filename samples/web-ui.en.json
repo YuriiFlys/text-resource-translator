@@ -1,0 +1,18 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "projects": {
+    "create": "Create project",
+    "empty": "You don't have any projects yet.",
+    "deleteConfirm": "Delete project \"{{name}}\"? All its files will be removed.",
+    "members": "{{count}} members"
+  },
+  "errors": {
+    "network": "Network error. Check your connection and try again.",
+    "forbidden": "You don't have permission to perform this action."
+  }
+}
