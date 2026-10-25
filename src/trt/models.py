@@ -217,3 +217,25 @@ class RagReviewQueue(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class RagRawArtifact(Base):
+    """Реєстр оригінальних файлів, збережених на диску (RawStore)."""
+
+    __tablename__ = "raw_artifact"
+    __table_args__ = (
+        UniqueConstraint("source", "name", "sha256", name="uq_raw_artifact_source_name_sha"),
+        {"schema": RAG_SCHEMA},
+    )
+
+    raw_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

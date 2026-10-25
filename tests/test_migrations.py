@@ -1,32 +1,14 @@
 from __future__ import annotations
 
-import os
-
-import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from tests.conftest import TEST_PG_DSN, requires_pg
-
-
-@pytest.fixture(scope="module")
-def migrated_engine():
-    os.environ["PG_DSN"] = TEST_PG_DSN
-    from alembic import command
-    from alembic.config import Config
-
-    from trt.cli import _alembic_config
-
-    cfg: Config = _alembic_config()
-    command.downgrade(cfg, "base")
-    command.upgrade(cfg, "head")
-    engine = create_engine(TEST_PG_DSN)
-    yield engine
-    engine.dispose()
+from tests.conftest import requires_pg
 
 
 @requires_pg
-def test_schema_objects(migrated_engine):
-    insp = inspect(migrated_engine)
+def test_schema_objects(pg_env):
+    engine = create_engine(pg_env["PG_DSN"])
+    insp = inspect(engine)
     assert {"i18n_locale", "i18n_text", "i18n_translation"} <= set(insp.get_table_names())
     assert {
         "document",
@@ -35,28 +17,31 @@ def test_schema_objects(migrated_engine):
         "sync_state",
         "translation_audit",
         "review_queue",
+        "raw_artifact",
     } <= set(insp.get_table_names(schema="rag"))
     idx = {i["name"] for i in insp.get_indexes("chunk", schema="rag")}
     assert "ix_chunk_embedding_hnsw" in idx
+    engine.dispose()
 
 
 @requires_pg
-def test_vector_roundtrip_and_knn(migrated_engine):
-    dim = int(os.environ.get("EMBEDDING_DIM", "768"))
-    with migrated_engine.begin() as conn:
-        conn.execute(text(open("sql/seed_i18n.sql", encoding="utf-8").read()))
+def test_vector_knn_order(pg_env):
+    dim = int(pg_env["EMBEDDING_DIM"])
+    engine = create_engine(pg_env["PG_DSN"])
+    with engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO rag.document (doc_key, source, kind, content, content_sha256) "
-                "VALUES ('t:1', 'test', 'ui_string', 'a', repeat('0', 64)) "
+                "VALUES ('t:knn', 'test', 'ui_string', 'a', repeat('0', 64)) "
                 "ON CONFLICT (doc_key) DO NOTHING"
             )
         )
         doc_id = conn.execute(
-            text("SELECT document_id FROM rag.document WHERE doc_key='t:1'")
+            text("SELECT document_id FROM rag.document WHERE doc_key='t:knn'")
         ).scalar_one()
         conn.execute(text("DELETE FROM rag.chunk WHERE document_id = :d"), {"d": doc_id})
-        for i, v in enumerate(([1.0] + [0.0] * (dim - 1), [0.0, 1.0] + [0.0] * (dim - 2))):
+        vecs = ([1.0] + [0.0] * (dim - 1), [0.0, 1.0] + [0.0] * (dim - 2))
+        for i, v in enumerate(vecs):
             conn.execute(
                 text(
                     "INSERT INTO rag.chunk (document_id, chunk_index, text, embed_text, embedding, "
@@ -76,4 +61,6 @@ def test_vector_roundtrip_and_knn(migrated_engine):
             .scalars()
             .all()
         )
+        conn.execute(text("DELETE FROM rag.document WHERE doc_key='t:knn'"))
+    engine.dispose()
     assert rows == ["chunk0", "chunk1"]

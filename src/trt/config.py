@@ -20,13 +20,14 @@ class Settings(BaseSettings):
 
     source_locale: str = "en"
 
-    embedding_provider: Literal["huggingface", "openai", "fake"] = "huggingface"
+    embedding_provider: Literal["huggingface", "openai", "hashing", "fake"] = "huggingface"
     embedding_model: str = "intfloat/multilingual-e5-base"
     embedding_dim: int = 768
 
     llm_model: str = "claude-sonnet-5-5"
 
     raw_dir: Path = Path("./data/raw")
+    sources_file: Path = Path("./sources.yaml")
 
     interval_minutes: int = 30
     log_level: str = "INFO"

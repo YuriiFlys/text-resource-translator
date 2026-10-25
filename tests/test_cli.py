@@ -14,8 +14,19 @@ def test_version():
     assert __version__ in result.output
 
 
-def test_unimplemented_commands_exit_2():
-    for args in (["ingest"], ["embed"], ["search", "x"], ["translate", "--locale", "uk"]):
-        result = runner.invoke(app, args)
-        assert result.exit_code == 2, args
-        assert "Not implemented" in result.output
+def test_help_lists_all_pipeline_commands():
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    for cmd in (
+        "check",
+        "migrate",
+        "seed",
+        "fetch",
+        "ingest",
+        "embed",
+        "search",
+        "translate",
+        "run-all",
+        "schedule",
+    ):
+        assert cmd in result.output, cmd

@@ -8,6 +8,8 @@ COPY src ./src
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY sql ./sql
+COPY sources.yaml ./
+COPY samples ./samples
 
 RUN pip install --upgrade pip && pip install ".[sources,embeddings-local,llm-anthropic]"
 
