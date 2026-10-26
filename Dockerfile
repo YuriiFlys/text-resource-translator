@@ -11,7 +11,7 @@ COPY sql ./sql
 COPY sources.yaml ./
 COPY samples ./samples
 
-RUN pip install --upgrade pip && pip install ".[sources,embeddings-local,llm-anthropic]"
+RUN pip install --upgrade pip && pip install ".[sources,embeddings-local,llm-ollama]"
 
 ENTRYPOINT []
 CMD ["trt", "--help"]

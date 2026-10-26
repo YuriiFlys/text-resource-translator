@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 
 @dataclass
@@ -35,13 +35,27 @@ class TranslationContext:
         return [e.chunk_id for e in self.tm_examples] + [cid for cid, _ in self.glossary_snippets]
 
 
-class TranslationItem(BaseModel):
-    text_code: str = Field(description="text_code рядка, як у вхідних даних")
-    translation: str
-
-
 class TranslationBatch(BaseModel):
-    items: list[TranslationItem]
+    model_config = ConfigDict(extra="forbid")
+    items: dict[str, str]
+
+
+def batch_schema(count: int) -> dict:
+    """Оllama grammar: рівно один переклад для кожного ID поточного запиту."""
+    ids = [str(i) for i in range(count)]
+    return {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "object",
+                "properties": {key: {"type": "string"} for key in ids},
+                "required": ids,
+                "additionalProperties": False,
+            }
+        },
+        "required": ["items"],
+        "additionalProperties": False,
+    }
 
 
 SYSTEM_PROMPT = """You are a professional software localization specialist.
@@ -57,9 +71,9 @@ Rules:
 4. Respect the element type (owner_kind): buttons are short imperative labels,
    headings are nouns, errors are full sentences.
 5. Do not translate product names, codes or brand names.
-6. Return ONLY a JSON object of the form
-   {{"items": [{{"text_code": "...", "translation": "..."}}]}}
-   with one item per input string, same text_code values, no commentary, no code fences.
+6. Return ONLY a JSON object mapping each input id to its translation:
+   {{"items": {{"0": "translation for id 0", "1": "translation for id 1"}}}}
+   Include every input id exactly once. No commentary, no code fences.
 """
 
 
@@ -86,11 +100,12 @@ def build_messages(
         "glossary_and_style_guide": list(glossary.values())[:8],
         "strings_to_translate": [
             {
+                "id": str(i),
                 "text_code": it.text_code or f"text_id:{it.text_id}",
                 "owner_kind": it.owner_kind,
                 "source": it.source_text,
             }
-            for it in items
+            for i, it in enumerate(items)
         ],
     }
     if previous_errors:
@@ -100,4 +115,7 @@ def build_messages(
         )
 
     system = SYSTEM_PROMPT.format(source_locale=source_locale, target_locale=target_locale)
-    return [("system", system), ("human", json.dumps(payload, ensure_ascii=False, indent=1))]
+    return [
+        ("system", system),
+        ("human", json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
+    ]

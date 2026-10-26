@@ -23,7 +23,7 @@ class DictionaryFakeChat(BaseChatModel):
     def _generate(self, messages: list[BaseMessage], stop=None, run_manager=None, **kwargs: Any):
         self.calls += 1
         payload = json.loads(messages[-1].content)
-        items = []
+        items = {}
         for s in payload["strings_to_translate"]:
             translation = self.dictionary.get(
                 s["source"], f"[{payload['target_locale']}] {s['source']}"
@@ -31,7 +31,7 @@ class DictionaryFakeChat(BaseChatModel):
             if s["text_code"] in self.break_once:
                 translation = translation.replace("{", "").replace("}", "")
                 self.break_once = self.break_once - {s["text_code"]}
-            items.append({"text_code": s["text_code"], "translation": translation})
+            items[s["id"]] = translation
         text = json.dumps({"items": items}, ensure_ascii=False)
         if self.fence:
             text = f"```json\n{text}\n```"

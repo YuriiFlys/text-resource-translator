@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from trt.chunking import embed_text_for, split_document
 from trt.models import RagDocument
 from trt.translate.prompt import WorkItem, build_messages
@@ -53,8 +55,6 @@ def test_build_messages_and_parse_batch():
     items = [WorkItem(1, "common.save", "button", "Save")]
     msgs = build_messages(items, {}, source_locale="en", target_locale="uk")
     assert msgs[0][0] == "system" and "uk" in msgs[0][1]
-    assert '"text_code": "common.save"' in msgs[1][1]
-    batch = parse_batch(
-        '```json\n{"items": [{"text_code": "common.save", "translation": "Зберегти"}]}\n```'
-    )
-    assert batch.items[0].translation == "Зберегти"
+    assert json.loads(msgs[1][1])["strings_to_translate"][0]["id"] == "0"
+    batch = parse_batch('```json\n{"items": {"0": "Зберегти"}}\n```')
+    assert batch.items["0"] == "Зберегти"

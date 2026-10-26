@@ -149,12 +149,14 @@ def translate(
 
     for r in step_translate(locale or None, limit, dry_run):
         typer.echo(
-            f"[{r.locale}] requested={r.requested} written={r.written} "
-            f"review={r.queued_for_review} llm_calls={r.llm_calls}"
+            f"[{r.locale}] requested={r.requested} accepted={r.accepted} written={r.written} "
+            f"review={r.queued_for_review} llm_calls={r.llm_calls} elapsed={r.elapsed_seconds:.1f}s"
         )
         if dry_run:
             for code, src, tgt in r.results:
                 typer.echo(f"  {code}: {src!r} -> {tgt!r}")
+        for code, reason in r.review_reasons.items():
+            typer.secho(f"  review {code}: {reason}", fg="yellow")
 
 
 @app.command("run-all")

@@ -7,6 +7,8 @@
 спираючись на пам'ять перекладів (translation memory) і глосарій.
 
 Детальний план і обґрунтування рішень — у [PLAN.md](PLAN.md).
+Пояснення поточної реалізації за файлами, функціями та рухом даних —
+у [PROJECT_GUIDE_UK.md](PROJECT_GUIDE_UK.md).
 
 ## Як це працює
 
@@ -27,21 +29,22 @@ sources.yaml / i18n_*  ──fetch──▶  RawStore (диск, content-address
 2. **ingest** — витягує текст (ключ → рядок для ресурсів, текст сторінок для PDF) і робить upsert у `rag.document`; документ оновлюється лише коли змінився `content_sha256`.
 3. **embed** — `RecursiveCharacterTextSplitter` / `MarkdownHeaderTextSplitter` → модель вкладень (HuggingFace, OpenAI або локальна hashing‑модель) з кешем у `rag.embedding_cache` → `rag.chunk` з HNSW‑індексом. Короткі UI‑рядки збагачуються `text_code | owner_kind`.
 4. **search** — kNN через pgvector (`<=>`), фільтри за локаллю і типом, повертає текст, `chunk_id`, `document_id`, score.
-5. **translate** — для кожної увімкненої локалі знаходить неперекладені або застарілі рядки, збирає translation memory (найближчі рядки вихідної локалі з наявними перекладами) та фрагменти глосарію, викликає LLM через LangChain (`init_chat_model`, провайдер за назвою моделі), валідує плейсхолдери й теги, повторює спробу з поясненням помилки, пише в `i18n_translation` з аудитом; невалідні потрапляють у `rag.review_queue`. Нові переклади на наступному циклі стають частиною translation memory.
+5. **translate** — для кожної увімкненої локалі знаходить неперекладені або застарілі рядки, збирає translation memory (найближчі рядки вихідної локалі з наявними перекладами) та фрагменти глосарію, викликає LLM через LangChain (`ChatOllama` або `init_chat_model`, провайдер із конфігурації чи назви моделі), валідує плейсхолдери й теги, повторює спробу з поясненням помилки, пише в `i18n_translation` з аудитом; невалідні потрапляють у `rag.review_queue`. Нові переклади на наступному циклі стають частиною translation memory.
 6. **schedule** — APScheduler запускає `run-all` за інтервалом або cron; паралельні запуски блокуються advisory lock'ом.
 
 ## Швидкий старт
 
 ```bash
-cp .env.example .env                    # заповнити PG_DSN, ANTHROPIC_API_KEY або OPENAI_API_KEY
+cp .env.example .env                    # налаштувати PG_DSN та інші параметри
 docker compose up -d db                 # PostgreSQL 16 з pgvector
 
 uv venv && source .venv/bin/activate
-uv pip install -e ".[dev,sources,embeddings-local,llm-anthropic]"
+uv pip install -e ".[dev,sources,embeddings-local,llm-ollama]"
 
 trt check                               # з'єднання та наявність pgvector
 trt migrate                             # розширення vector, схема rag, індекси
 trt seed                                # тестові дані в i18n_* (en повна, uk часткова, pl порожня)
+trt seed --file sql/seed_i18n_large.sql # 100 додаткових англійських UI-рядків для демо перекладу
 
 trt fetch                               # i18n_* → JSONL, sources.yaml → файли на диск
 trt ingest                              # оригінали → rag.document
@@ -55,6 +58,41 @@ trt schedule                            # періодично, кожні INTER
 
 Увесь конвеєр у контейнері: `docker compose up` (сервіс `app` запускає `trt schedule`).
 
+Для перекладу локальною Ollama встановіть extra `llm-ollama`. У перекладачі thinking для Ollama
+вимкнений через API параметр (`think: false`). Задайте в `.env`:
+
+```dotenv
+LLM_PROVIDER=ollama
+LLM_MODEL=qwen3.5:9b
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+Переконайтеся, що Ollama запущена і модель доступна (`ollama list`). Якщо застосунок працює в Docker,
+`localhost` вказуватиме на контейнер; задайте `OLLAMA_BASE_URL=http://host.docker.internal:11434`, щоб
+контейнер звертався до Ollama на хості (або вкажіть адресу Ollama, доступну з контейнера).
+
+Щоб додати великий демо-набір і побачити переклади без запису в базу, виконайте:
+
+```bash
+trt seed --file sql/seed_i18n_large.sql
+trt translate --locale uk --limit 100 --dry-run
+```
+
+Сід додає 100 англійських рядків із різних частин інтерфейсу; українські переклади для них
+залишаються порожніми, щоб перекладач міг їх заповнити. Його можна запускати повторно.
+
+Ollama отримує JSON-схему з обов'язковими ID рядків і генерує компактну відповідь без thinking
+за температури 0. Перекладач перевіряє плейсхолдери й повторює лише відхилені рядки.
+Email-адреси та URL можуть залишатися без змін. Порожній RAG-індекс не потребує завантаження
+моделі вкладень; за наявності індексу вектори запитів обчислюються пакетами й кешуються.
+Щоб використовувати translation memory і глосарій, попередньо виконайте
+`trt fetch`, `trt ingest`, `trt embed`.
+
+У логах видно початок запиту, витрачений час, кількість токенів і прогрес пакетів.
+Підсумок розрізняє `accepted` (переклади, що пройшли перевірку) і `written` (збережені в базу).
+З `--dry-run` значення `written` дорівнює 0; для відхилених рядків CLI показує причини.
+Без `--dry-run` невдалий варіант перекладу також зберігається в `rag.review_queue` для перевірки.
+
 Без завантаження моделей і ключів можна перевірити все, крім LLM‑перекладу:
 `EMBEDDING_PROVIDER=hashing` використовує детерміновану локальну модель вкладень.
 
@@ -65,7 +103,12 @@ trt schedule                            # періодично, кожні INTER
 | `PG_DSN` | SQLAlchemy DSN однієї бази для `i18n_*` і схеми `rag` |
 | `SOURCE_LOCALE` | вихідна локаль для перекладу (типово `en`) |
 | `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `huggingface` (`intfloat/multilingual-e5-base`, 768), `openai` (`text-embedding-3-small`, 1536) або `hashing`; розмірність фіксується типом колонки при `trt migrate` |
-| `LLM_MODEL` | модель чату для LangChain `init_chat_model`, напр. `claude-sonnet-5-5` |
+| `LLM_PROVIDER` | `auto` (визначення за назвою моделі), `anthropic`, `openai` або `ollama` |
+| `LLM_MODEL` | модель чату, наприклад `qwen3.5:9b` для Ollama |
+| `OLLAMA_BASE_URL` | адреса Ollama API, типово `http://localhost:11434` |
+| `OLLAMA_TIMEOUT_SECONDS` | таймаут очікування відповіді Ollama, типово 120 секунд |
+| `TRANSLATION_BATCH_SIZE` | рядків в одному LLM-запиті, типово 20; допустимо 1–100 |
+| `TRANSLATION_MAX_RETRIES` | повторних спроб для відхилених рядків, типово 1; допустимо 0–5 |
 | `RAW_DIR` | корінь RawStore на диску |
 | `SOURCES_FILE` | шлях до `sources.yaml` |
 | `INTERVAL_MINUTES` | період планувальника |

@@ -24,7 +24,12 @@ class Settings(BaseSettings):
     embedding_model: str = "intfloat/multilingual-e5-base"
     embedding_dim: int = 768
 
+    llm_provider: Literal["auto", "anthropic", "openai", "ollama"] = "auto"
     llm_model: str = "claude-sonnet-5-5"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_timeout_seconds: float = Field(default=120, gt=0)
+    translation_batch_size: int = Field(default=20, ge=1, le=100)
+    translation_max_retries: int = Field(default=1, ge=0, le=5)
 
     raw_dir: Path = Path("./data/raw")
     sources_file: Path = Path("./sources.yaml")
