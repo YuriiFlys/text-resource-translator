@@ -1,0 +1,37 @@
+# Джерела S2 (файли ресурсів UI) та S3 (довідкові документи).
+# location — http(s) URL або локальний шлях. Для URL зберігаються ETag/Last-Modified.
+sources:
+  - name: web-ui-en
+    type: resource_file
+    location: samples/web-ui.en.json
+    format: json
+    locale: en
+    owner_kind: web
+
+  - name: mobile-en
+    type: resource_file
+    location: samples/mobile_en.properties
+    format: properties
+    locale: en
+    owner_kind: mobile
+
+  - name: mobile-uk
+    type: resource_file
+    location: samples/mobile_uk.properties
+    format: properties
+    locale: uk
+    owner_kind: mobile
+
+  - name: glossary
+    type: document
+    location: samples/glossary.md
+    format: md
+    locale: uk
+    description: Глосарій термінів продукту en→uk
+
+  - name: style-guide
+    type: document
+    location: samples/style-guide.pdf
+    format: pdf
+    locale: uk
+    description: Стайлгайд локалізації
